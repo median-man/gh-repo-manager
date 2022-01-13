@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/gh-repo-manager/static/css/main.1a8a0596.css",
+    "main.js": "/gh-repo-manager/static/js/main.c55d584e.js",
+    "static/js/787.18e6a380.chunk.js": "/gh-repo-manager/static/js/787.18e6a380.chunk.js",
+    "index.html": "/gh-repo-manager/index.html",
+    "main.1a8a0596.css.map": "/gh-repo-manager/static/css/main.1a8a0596.css.map",
+    "main.c55d584e.js.map": "/gh-repo-manager/static/js/main.c55d584e.js.map",
+    "787.18e6a380.chunk.js.map": "/gh-repo-manager/static/js/787.18e6a380.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.1a8a0596.css",
+    "static/js/main.c55d584e.js"
+  ]
+}
