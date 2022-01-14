@@ -22,7 +22,10 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "deploy": "npm run deploy:client && npm run deploy:auth",
+    "deploy:client": "gh-pages -d build",
+    "deploy:auth": "git subtree push --prefix auth-server heroku main",
+    "auth": "cd auth-server && npm start"
   },
   "eslintConfig": {
     "extends": [
