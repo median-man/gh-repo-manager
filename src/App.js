@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navbar from "react-bootstrap/Navbar";
 import Container from "react-bootstrap/Container";
 import Col from "react-bootstrap/Col";
@@ -10,8 +10,85 @@ import FormControl from "react-bootstrap/FormControl";
 import Button from "react-bootstrap/Button";
 import ButtonGroup from "react-bootstrap/ButtonGroup";
 
+// TODO: finish GH Authorization web flow
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [ghAccessToken, setGhAccessToken] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authState = params.get("state");
+    const ghAuthCode = params.get("code");
+    const loginState = JSON.parse(localStorage.getItem("loginState"));
+    if (
+      !loginState ||
+      loginState.exp < Date.now() ||
+      authState !== loginState.value
+    ) {
+      return "";
+    }
+    return ghAuthCode;
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authState = params.get("state");
+    const ghAuthCode = params.get("code");
+    const loginState = JSON.parse(localStorage.getItem("loginState"));
+    if (
+      !ghAuthCode ||
+      !loginState ||
+      loginState.exp < Date.now() ||
+      authState !== loginState.value
+    ) {
+      return;
+    }
+    (async () => {
+      try {
+        const response = await fetch(process.env.REACT_APP_AUTH_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ code: ghAuthCode }),
+        });
+        const body = await response.json();
+        console.log(body);
+        if (!response.ok) {
+          const httpError = new Error(body.error?.message || "HTTP Error");
+          httpError.status = response.status;
+          httpError.type = "HTTP_ERROR";
+          throw httpError;
+        }
+        setGhAccessToken(body.access_token);
+      } catch (error) {
+        console.error(error);
+      }
+    })();
+  }, []);
+
+  const handleLoginClick = async () => {
+    // Random state Sourced from
+    // https://medium.com/@dazcyril/generating-cryptographic-random-state-in-javascript-in-the-browser-c538b3daae50.
+    // Thank you Daz.
+    try {
+      const validChars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+      let array = new Uint8Array(40);
+      window.crypto.getRandomValues(array);
+      for (let i = 0; i < array.length; i += 1) {
+        array[i] = validChars.charCodeAt(array[i] % validChars.length);
+      }
+      array = array.map((x) => validChars.charCodeAt(x % validChars.length));
+      const loginState = {
+        value: String.fromCharCode.apply(null, array),
+        exp: Date.now() + 59000,
+      };
+      localStorage.setItem("loginState", JSON.stringify(loginState));
+
+      const url = `https://github.com/login/oauth/authorize?client_id=${process.env.REACT_APP_GH_CLIENT_ID}&state=${loginState.value}&scope=repo delete_repo`;
+      window.location.assign(url);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   return (
     <div className="App text-white bg-dark min-vh-100">
@@ -20,16 +97,16 @@ function App() {
           <Navbar.Brand as="h1">GitHub Manager</Navbar.Brand>
           <Navbar.Text className="justify-content-end">
             <Button
-              variant={isLoggedIn ? "secondary" : "primary"}
-              onClick={() => setIsLoggedIn((state) => !state)}
+              variant={ghAccessToken ? "secondary" : "primary"}
+              onClick={handleLoginClick}
             >
-              {isLoggedIn ? "Logout" : "Login with GitHub"}
+              {ghAccessToken ? "Logout" : "Login with GitHub"}
             </Button>
           </Navbar.Text>
         </Container>
       </Navbar>
       <Container as="main" className="pt-5">
-        {isLoggedIn ? (
+        {ghAccessToken ? (
           <RepositoriesView />
         ) : (
           <>
