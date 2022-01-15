@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { HTTPError } from "./errors";
+
+// Bootstrap components
 import Navbar from "react-bootstrap/Navbar";
 import Container from "react-bootstrap/Container";
 import Col from "react-bootstrap/Col";
@@ -17,6 +20,7 @@ function App() {
   const [ghAccessToken, setGhAccessToken] = useState(
     () => sessionStorage.getItem(STORAGE_KEY_ACCESS_TOKEN) || ""
   );
+  const [user, setUser] = useState(null);
 
   // Send request for an access_code if the url params from GitHub redirect are
   // present.
@@ -48,12 +52,11 @@ function App() {
           body: JSON.stringify({ code: ghAuthCode }),
         });
         const body = await response.json();
-
         if (!response.ok) {
-          const httpError = new Error(body.error?.message || "HTTP Error");
-          httpError.status = response.status;
-          httpError.type = "HTTP_ERROR";
-          throw httpError;
+          throw new HTTPError({
+            message: body.error?.message,
+            status: response.status,
+          });
         }
         setGhAccessToken(body.access_token);
       } catch (error) {
@@ -67,13 +70,43 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // synchronize session storage with access token
     sessionStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, ghAccessToken);
-    if (ghAccessToken) {
-      // If the user is logged in (ghAccessToken is set), then remove the
-      // ?code=... params from the url. Use replace state to avoid using using
-      // back button to re-run the auth.
-      window.history.replaceState({}, document.title, window.location.pathname);
+
+    if (!ghAccessToken) {
+      return;
     }
+
+    // If the user is logged in (ghAccessToken is set), then remove the
+    // ?code=... params from the url. Use replace state to avoid using using
+    // back button to re-run the auth.
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    // Fetch user
+    (async () => {
+      try {
+        const ghUserResponse = await fetch("https://api.github.com/user", {
+          method: "GET",
+          headers: {
+            Accept: "application/vnd.github.v3+json",
+            Authorization: `Bearer ${ghAccessToken}`,
+          },
+        });
+        const body = await ghUserResponse.json();
+        if (!ghUserResponse.ok) {
+          throw new HTTPError({
+            message: body.message,
+            status: ghUserResponse.status,
+          });
+        }
+        setUser(body);
+      } catch (error) {
+        console.log(error);
+        alert(
+          "There was a problem logging in. Unable to fetch your username and info."
+        );
+      }
+    })();
   }, [ghAccessToken]);
 
   const handleToggleLoginClick = async () => {
