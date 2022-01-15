@@ -10,24 +10,18 @@ import FormControl from "react-bootstrap/FormControl";
 import Button from "react-bootstrap/Button";
 import ButtonGroup from "react-bootstrap/ButtonGroup";
 
-// TODO: finish GH Authorization web flow
-function App() {
-  const [ghAccessToken, setGhAccessToken] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const authState = params.get("state");
-    const ghAuthCode = params.get("code");
-    const loginState = JSON.parse(localStorage.getItem("loginState"));
-    if (
-      !loginState ||
-      loginState.exp < Date.now() ||
-      authState !== loginState.value
-    ) {
-      return "";
-    }
-    return ghAuthCode;
-  });
+const STORAGE_KEY_LOGIN_STATE = "loginState";
+const STORAGE_KEY_ACCESS_TOKEN = "ghAccessToken";
 
+function App() {
+  const [ghAccessToken, setGhAccessToken] = useState(
+    () => sessionStorage.getItem(STORAGE_KEY_ACCESS_TOKEN) || ""
+  );
+
+  // Send request for an access_code if the url params from GitHub redirect are
+  // present.
   useEffect(() => {
+    // Check for code in params to do the auth flow
     const params = new URLSearchParams(window.location.search);
     const authState = params.get("state");
     const ghAuthCode = params.get("code");
@@ -40,8 +34,12 @@ function App() {
     ) {
       return;
     }
+
+    // This function sends a request for the access_token and completes the
+    // login flow.
     (async () => {
       try {
+        // Send request
         const response = await fetch(process.env.REACT_APP_AUTH_URL, {
           method: "POST",
           headers: {
@@ -50,7 +48,7 @@ function App() {
           body: JSON.stringify({ code: ghAuthCode }),
         });
         const body = await response.json();
-        console.log(body);
+
         if (!response.ok) {
           const httpError = new Error(body.error?.message || "HTTP Error");
           httpError.status = response.status;
@@ -60,15 +58,34 @@ function App() {
         setGhAccessToken(body.access_token);
       } catch (error) {
         console.error(error);
+        alert("Unable to authenticate with GitHub.");
+      } finally {
+        // Clear login state from local storage
+        localStorage.removeItem(STORAGE_KEY_LOGIN_STATE);
       }
     })();
   }, []);
 
-  const handleLoginClick = async () => {
-    // Random state Sourced from
-    // https://medium.com/@dazcyril/generating-cryptographic-random-state-in-javascript-in-the-browser-c538b3daae50.
-    // Thank you Daz.
+  useEffect(() => {
+    sessionStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, ghAccessToken);
+    if (ghAccessToken) {
+      // If the user is logged in (ghAccessToken is set), then remove the
+      // ?code=... params from the url. Use replace state to avoid using using
+      // back button to re-run the auth.
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [ghAccessToken]);
+
+  const handleToggleLoginClick = async () => {
     try {
+      if (ghAccessToken) {
+        // Currently user is logged in. Clear the access token to logout.
+        setGhAccessToken("");
+        return;
+      }
+      // Random state Sourced from
+      // https://medium.com/@dazcyril/generating-cryptographic-random-state-in-javascript-in-the-browser-c538b3daae50.
+      // Thank you Daz.
       const validChars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
       let array = new Uint8Array(40);
@@ -81,10 +98,14 @@ function App() {
         value: String.fromCharCode.apply(null, array),
         exp: Date.now() + 59000,
       };
-      localStorage.setItem("loginState", JSON.stringify(loginState));
 
-      const url = `https://github.com/login/oauth/authorize?client_id=${process.env.REACT_APP_GH_CLIENT_ID}&state=${loginState.value}&scope=repo delete_repo`;
-      window.location.assign(url);
+      // Store state in local storage to compare after github redirects back to
+      // the app
+      localStorage.setItem(STORAGE_KEY_LOGIN_STATE, JSON.stringify(loginState));
+
+      // Direct user to GitHub for OAuth code
+      const gitHubLoginUrl = `https://github.com/login/oauth/authorize?client_id=${process.env.REACT_APP_GH_CLIENT_ID}&state=${loginState.value}&scope=repo delete_repo`;
+      window.location.assign(gitHubLoginUrl);
     } catch (error) {
       console.error(error);
     }
@@ -98,7 +119,7 @@ function App() {
           <Navbar.Text className="justify-content-end">
             <Button
               variant={ghAccessToken ? "secondary" : "primary"}
-              onClick={handleLoginClick}
+              onClick={handleToggleLoginClick}
             >
               {ghAccessToken ? "Logout" : "Login with GitHub"}
             </Button>
@@ -109,9 +130,7 @@ function App() {
         {ghAccessToken ? (
           <RepositoriesView />
         ) : (
-          <>
-            <p>You must login to view your repos.</p>
-          </>
+          <p>You must login to view your repos.</p>
         )}
       </Container>
     </div>
