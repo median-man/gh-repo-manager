@@ -17,103 +17,95 @@ const STORAGE_KEY_LOGIN_STATE = "loginState";
 const STORAGE_KEY_ACCESS_TOKEN = "ghAccessToken";
 
 function App() {
-  const [ghAccessToken, setGhAccessToken] = useState(
-    () => sessionStorage.getItem(STORAGE_KEY_ACCESS_TOKEN) || ""
-  );
+  const [ghAccessToken, setGhAccessToken] = useState("");
+  const [authPending, setAuthPending] = useState(false);
   const [user, setUser] = useState(null);
 
-  // Send request for an access_code if the url params from GitHub redirect are
-  // present.
+  // manage auth flow
   useEffect(() => {
-    // Check for code in params to do the auth flow
+    let token = sessionStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
+    let ghUserData = null;
+    const loginState = JSON.parse(
+      localStorage.getItem(STORAGE_KEY_LOGIN_STATE)
+    );
     const params = new URLSearchParams(window.location.search);
-    const authState = params.get("state");
-    const ghAuthCode = params.get("code");
-    const loginState = JSON.parse(localStorage.getItem("loginState"));
-    if (
-      !ghAuthCode ||
-      !loginState ||
-      loginState.exp < Date.now() ||
-      authState !== loginState.value
-    ) {
+    const stateParam = params.get("state");
+    const codeParam = params.get("code");
+
+    // Use replace state to avoid using using back button to re-run the auth.
+    // The presence of the params is used to determine if the page loaded after
+    // GitHub login redirect.
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    const isStateFresh = loginState && loginState.exp > Date.now();
+    if (!token && !isStateFresh) {
+      // User is not logged in and auth flow is not in progress
       return;
     }
 
-    // This function sends a request for the access_token and completes the
-    // login flow.
+    setAuthPending(true);
+
     (async () => {
       try {
-        // Send request
-        const response = await fetch(process.env.REACT_APP_AUTH_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ code: ghAuthCode }),
-        });
-        const body = await response.json();
-        if (!response.ok) {
-          throw new HTTPError({
-            message: body.error?.message,
-            status: response.status,
+        // Verify state and request access token if there is no token
+        if (!token && stateParam === loginState.value) {
+          const response = await fetch(process.env.REACT_APP_AUTH_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ code: codeParam }),
           });
+          const body = await response.json();
+          if (!response.ok) {
+            throw new HTTPError({
+              message: body.error?.message,
+              status: response.status,
+            });
+          }
+          token = body.access_token;
         }
-        setGhAccessToken(body.access_token);
+
+        // Fetch the user data from GitHub if token exists
+        {
+          const response = await fetch("https://api.github.com/user", {
+            method: "GET",
+            headers: {
+              Accept: "application/vnd.github.v3+json",
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            throw new HTTPError({
+              message: body.message,
+              status: response.status,
+            });
+          }
+          ghUserData = body;
+        }
+
+        // Persist token and update App state
+        sessionStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, token);
+        setGhAccessToken(token);
+        setUser(ghUserData);
       } catch (error) {
         console.error(error);
-        alert("Unable to authenticate with GitHub.");
+        alert("Unable to login.");
       } finally {
-        // Clear login state from local storage
         localStorage.removeItem(STORAGE_KEY_LOGIN_STATE);
+        setAuthPending(false);
       }
     })();
   }, []);
-
-  useEffect(() => {
-    // synchronize session storage with access token
-    sessionStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, ghAccessToken);
-
-    if (!ghAccessToken) {
-      return;
-    }
-
-    // If the user is logged in (ghAccessToken is set), then remove the
-    // ?code=... params from the url. Use replace state to avoid using using
-    // back button to re-run the auth.
-    window.history.replaceState({}, document.title, window.location.pathname);
-
-    // Fetch user
-    (async () => {
-      try {
-        const ghUserResponse = await fetch("https://api.github.com/user", {
-          method: "GET",
-          headers: {
-            Accept: "application/vnd.github.v3+json",
-            Authorization: `Bearer ${ghAccessToken}`,
-          },
-        });
-        const body = await ghUserResponse.json();
-        if (!ghUserResponse.ok) {
-          throw new HTTPError({
-            message: body.message,
-            status: ghUserResponse.status,
-          });
-        }
-        setUser(body);
-      } catch (error) {
-        console.log(error);
-        alert(
-          "There was a problem logging in. Unable to fetch your username and info."
-        );
-      }
-    })();
-  }, [ghAccessToken]);
 
   const handleToggleLoginClick = async () => {
     try {
       if (ghAccessToken) {
         // Currently user is logged in. Clear the access token to logout.
+        sessionStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
         setGhAccessToken("");
+        setUser(null);
         return;
       }
       // Random state Sourced from
