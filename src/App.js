@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { HTTPError } from "./errors";
 
@@ -17,6 +17,8 @@ import Spinner from "react-bootstrap/Spinner";
 
 const STORAGE_KEY_LOGIN_STATE = "loginState";
 const STORAGE_KEY_ACCESS_TOKEN = "ghAccessToken";
+
+const GH_API_BASE_URL = "https://api.github.com";
 
 function App() {
   const [ghAccessToken, setGhAccessToken] = useState("");
@@ -70,7 +72,7 @@ function App() {
 
         // Fetch the user data from GitHub if token exists
         {
-          const response = await fetch("https://api.github.com/user", {
+          const response = await fetch(`${GH_API_BASE_URL}/user`, {
             method: "GET",
             headers: {
               Accept: "application/vnd.github.v3+json",
@@ -159,7 +161,7 @@ function App() {
         {authPending ? (
           <p>Logging in with GitHub.</p>
         ) : ghAccessToken ? (
-          <RepositoriesView />
+          <RepositoriesView user={user} ghAccessToken={ghAccessToken} />
         ) : (
           <p>You must login to view your repos.</p>
         )}
@@ -168,13 +170,50 @@ function App() {
   );
 }
 
-function RepositoriesView() {
+function RepositoriesView({ user, ghAccessToken }) {
+  const [pending, setPending] = useState(false);
+  const [search, setSearch] = useState("");
+  const [repoData, setRepoData] = useState(null);
+  useEffect(() => {
+    console.info("repoData:", repoData);
+  }, [repoData]);
+  const handleSearchFormSubmit = async (event) => {
+    event.preventDefault();
+    setPending(true);
+    try {
+      let q = `user:${user.login}`;
+      if (search.trim()) {
+        q = `${search.trim()}+${q}`;
+      }
+      const url = `${GH_API_BASE_URL}/search/repositories?q=${q}&per_page=100`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+          Authorization: `Bearer ${ghAccessToken}`,
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new HTTPError({
+          message: data.message,
+          status: response.status,
+        });
+      }
+      setRepoData(data);
+    } catch (error) {
+      alert("Uh oh. Something went wrong. Unable to fetch your repos.");
+      console.log(error);
+    } finally {
+      setPending(false);
+    }
+  };
   return (
     <>
       <header>
         <h2>Repositories</h2>
       </header>
-      <Form className="pt-5">
+      <Form className="pt-5" onSubmit={handleSearchFormSubmit}>
         <Row>
           <Col lg={6}>
             <InputGroup className="mb-3">
@@ -182,15 +221,18 @@ function RepositoriesView() {
                 placeholder="Search repo names"
                 aria-label="Search repo names"
                 aria-describedby="find-repos-btn"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
               />
-              <Button variant="primary" id="find-repos-btn">
+              <Button variant="primary" id="find-repos-btn" type="submit">
                 Find repos
               </Button>
             </InputGroup>
           </Col>
         </Row>
       </Form>
-      <Row className="mt-3">
+      {/* Hide controls for repos if there aren't any. Use visibility to avoid UI jumps */}
+      <Row className={`mt-3 ${repoData?.items.length ? "" : "invisible"}`}>
         <Col>
           <ButtonGroup aria-label="Basic example">
             <Button variant="danger">Delete</Button>
@@ -198,94 +240,81 @@ function RepositoriesView() {
           </ButtonGroup>
         </Col>
       </Row>
-      <Row>
+      <Row className="mt-3">
         <Col lg={8}>
-          <Table variant="dark" size="sm" responsive="sm" className="mt-5">
-            <thead>
-              <tr>
-                <th>Select</th>
-                <th>Name</th>
-                <th>Created</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>
-                  <div key="checkbox" className="mb-3">
-                    <Form.Check type="checkbox" id={`check-api-checkbox`}>
-                      <Form.Check.Input
-                        type="checkbox"
-                        aria-label="check to include the repo in the selection for editing"
-                      />
-                    </Form.Check>
-                  </div>
-                </td>
-                <td>
-                  <a
-                    href="https://github.com/median-man/demo-proj"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    demo-proj
-                  </a>
-                </td>
-                <td>4-22-2021</td>
-                <td>5-16-2021</td>
-              </tr>
-              <tr>
-                <td>
-                  <div key="checkbox" className="mb-3">
-                    <Form.Check type="checkbox" id={`check-api-checkbox`}>
-                      <Form.Check.Input
-                        type="checkbox"
-                        aria-label="check to include the repo in the selection for editing"
-                      />
-                    </Form.Check>
-                  </div>
-                </td>
-                <td>
-                  <a
-                    href="https://github.com/median-man/demo-proj"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    demo-proj
-                  </a>
-                </td>
-                <td>4-22-2021</td>
-                <td>5-16-2021</td>
-              </tr>
-              <tr>
-                <td>
-                  <div key="checkbox" className="mb-3">
-                    <Form.Check type="checkbox" id={`check-api-checkbox`}>
-                      <Form.Check.Input
-                        type="checkbox"
-                        aria-label="check to include the repo in the selection for editing"
-                      />
-                    </Form.Check>
-                  </div>
-                </td>
-                <td>
-                  <a
-                    href="https://github.com/median-man/demo-proj"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    demo-proj
-                  </a>
-                </td>
-                <td>4-22-2021</td>
-                <td>5-16-2021</td>
-              </tr>
-            </tbody>
-          </Table>
+          {pending && <p>Searching GitHub for your repositories...</p>}
+          {!pending && !repoData && (
+            <p>
+              Enter a search and click "Find repos" to search your repositories
+              on GitHub. Leave the search blank to find all your repos. (Can
+              only display up to 100 repositories.)
+            </p>
+          )}
+          {repoData?.total_count === 0 && (
+            <p>There were no repos matching your search.</p>
+          )}
+          {repoData?.items.length > 0 && <p>Displaying {repoData.items.length} of {repoData.total_count} matching repositories.</p>}
+          {repoData?.items.length > 0 && (
+            <Table variant="dark" size="sm" responsive="sm" className="mt-5">
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Name</th>
+                  <th>Created</th>
+                  <th>Updated</th>
+                  <th>Issues</th>
+                  <th>Visibility</th>
+                  <th>Stars</th>
+                  <th>Forks</th>
+                  <th>GH Pages</th>
+                </tr>
+              </thead>
+              <tbody>
+                {repoData.items.map((repo) => {
+                  return (
+                    <tr key={repo.id}>
+                      <td>
+                        <div key="checkbox" className="mb-3">
+                          <Form.Check type="checkbox" id={`check-api-checkbox`}>
+                            <Form.Check.Input
+                              type="checkbox"
+                              aria-label="check to include the repo in the selection for editing"
+                            />
+                          </Form.Check>
+                        </div>
+                      </td>
+                      <td>
+                        <a
+                          href={repo.html_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {repo.name}
+                        </a>
+                      </td>
+                      <td>{repo.created_at.split("T")[0]}</td>
+                      <td>{repo.updated_at.split("T")[0]}</td>
+                      <td>{repo.open_issues}</td>
+                      <td>{repo.private ? "private" : "public"}</td>
+                      <td>{repo.stargazers_count}</td>
+                      <td>{repo.forks_count}</td>
+                      <td>{repo.has_pages ? "yes" : "no"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          )}
         </Col>
       </Row>
     </>
   );
 }
+
+RepositoriesView.propTypes = {
+  user: PropTypes.object.isRequired,
+  ghAccessToken: PropTypes.string.isRequired,
+};
 
 function AuthButton({ isPending, isLoggedIn, onClick }) {
   return (
