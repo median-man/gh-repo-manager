@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 import { HTTPError } from "./errors";
 
 // Bootstrap components
@@ -12,6 +13,7 @@ import InputGroup from "react-bootstrap/InputGroup";
 import FormControl from "react-bootstrap/FormControl";
 import Button from "react-bootstrap/Button";
 import ButtonGroup from "react-bootstrap/ButtonGroup";
+import Spinner from "react-bootstrap/Spinner";
 
 const STORAGE_KEY_LOGIN_STATE = "loginState";
 const STORAGE_KEY_ACCESS_TOKEN = "ghAccessToken";
@@ -100,6 +102,9 @@ function App() {
   }, []);
 
   const handleToggleLoginClick = async () => {
+    if (authPending) {
+      return;
+    }
     try {
       if (ghAccessToken) {
         // Currently user is logged in. Clear the access token to logout.
@@ -142,17 +147,18 @@ function App() {
         <Container>
           <Navbar.Brand as="h1">GitHub Manager</Navbar.Brand>
           <Navbar.Text className="justify-content-end">
-            <Button
-              variant={ghAccessToken ? "secondary" : "primary"}
+            <AuthButton
+              isPending={authPending}
+              isLoggedIn={ghAccessToken !== ""}
               onClick={handleToggleLoginClick}
-            >
-              {ghAccessToken ? "Logout" : "Login with GitHub"}
-            </Button>
+            />
           </Navbar.Text>
         </Container>
       </Navbar>
       <Container as="main" className="pt-5">
-        {ghAccessToken ? (
+        {authPending ? (
+          <p>Logging in with GitHub.</p>
+        ) : ghAccessToken ? (
           <RepositoriesView />
         ) : (
           <p>You must login to view your repos.</p>
@@ -280,5 +286,35 @@ function RepositoriesView() {
     </>
   );
 }
+
+function AuthButton({ isPending, isLoggedIn, onClick }) {
+  return (
+    <Button
+      variant={isPending || isLoggedIn ? "secondary" : "primary"}
+      onClick={onClick}
+      disabled={isPending}
+    >
+      <Spinner
+        as="span"
+        animation="border"
+        size="sm"
+        role="status"
+        aria-hidden="true"
+        className={isPending ? "" : "d-none"}
+      />{" "}
+      {isPending
+        ? "Logging in ..."
+        : isLoggedIn
+        ? "Logout"
+        : "Login with GitHub"}
+    </Button>
+  );
+}
+
+AuthButton.propTypes = {
+  isPending: PropTypes.bool.isRequired,
+  isLoggedIn: PropTypes.bool.isRequired,
+  onClick: PropTypes.func.isRequired,
+};
 
 export default App;
