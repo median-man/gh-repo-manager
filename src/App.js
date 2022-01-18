@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { HTTPError } from "./errors";
-import { fetchGitHubUser, searchForRepos } from "./github-api";
+import {
+  deleteRepo,
+  fetchGitHubUser,
+  searchGitHubForRepos,
+} from "./github-api";
 
 // Bootstrap components
 import Navbar from "react-bootstrap/Navbar";
@@ -158,23 +162,32 @@ function RepositoriesView({ user, ghAccessToken }) {
   const [search, setSearch] = useState("");
   const [repoData, setRepoData] = useState(null);
   const [selectedRepos, setSelectedRepos] = useState({});
+  const [statusMessage, setStatusMessage] = useState(
+    'Enter a search and click "Find repos" to search your repositories on GitHub. Leave the search blank to find all your repos. (Can only display up to 100 repositories.)'
+  );
 
-  const handleSearchFormSubmit = async (event) => {
-    event.preventDefault();
+  const fetchRepos = async () => {
     setPending(true);
     try {
-      const data = await searchForRepos(ghAccessToken, {
+      const data = await searchGitHubForRepos(ghAccessToken, {
         user: user.login,
         search: search.trim(),
         perPage: 100,
       });
       setRepoData(data);
+      setStatusMessage("");
     } catch (error) {
       alert("Uh oh. Something went wrong. Unable to fetch your repos.");
       console.log(error);
     } finally {
       setPending(false);
     }
+  };
+
+  const handleSearchFormSubmit = (event) => {
+    event.preventDefault();
+    setStatusMessage("Searching GitHub for repos...");
+    fetchRepos();
   };
 
   const handleSelectChange = (event) => {
@@ -186,6 +199,42 @@ function RepositoriesView({ user, ghAccessToken }) {
 
   const handleClearClick = () => {
     setSelectedRepos({});
+  };
+
+  const handleDeleteClick = async () => {
+    try {
+      const repoNames = repoData.items
+        .filter((repo) => selectedRepos[repo.id])
+        .map((repo) => repo.name);
+
+      const confirmDelete = window.confirm(
+        `Are you sure you want to delete ${repoNames.length} repos?`
+      );
+
+      if (!confirmDelete) {
+        return;
+      }
+
+      setPending(true);
+      setStatusMessage("Deleting repos...");
+
+      await Promise.allSettled(
+        repoNames.map((repoName) => {
+          return deleteRepo(ghAccessToken, {
+            owner: user.login,
+            repoName: repoName,
+          });
+        })
+      );
+
+      setStatusMessage("Delete was successful. Updating list of repos...");
+      await fetchRepos();
+      // No need to set pending to false bc searchForRepos does.
+    } catch (error) {
+      alert("Something went wrong trying to delete repos.");
+      console.error(error);
+      setPending(false);
+    }
   };
 
   return (
@@ -215,7 +264,9 @@ function RepositoriesView({ user, ghAccessToken }) {
       <Row className={`mt-3 ${repoData?.items.length ? "" : "invisible"}`}>
         <Col>
           <ButtonGroup aria-label="Basic example">
-            <Button variant="danger">Delete</Button>
+            <Button variant="danger" onClick={handleDeleteClick}>
+              Delete
+            </Button>
             <Button variant="secondary" onClick={handleClearClick}>
               Clear
             </Button>
@@ -224,24 +275,17 @@ function RepositoriesView({ user, ghAccessToken }) {
       </Row>
       <Row className="mt-3">
         <Col lg={8}>
-          {pending && <p>Searching GitHub for your repositories...</p>}
-          {!pending && !repoData && (
-            <p>
-              Enter a search and click "Find repos" to search your repositories
-              on GitHub. Leave the search blank to find all your repos. (Can
-              only display up to 100 repositories.)
-            </p>
-          )}
-          {repoData?.total_count === 0 && (
+          {statusMessage && <p>{statusMessage}</p>}
+          {!pending && repoData?.total_count === 0 && (
             <p>There were no repos matching your search.</p>
           )}
-          {repoData?.items.length > 0 && (
+          {!pending && repoData?.items.length > 0 && (
             <p>
               Displaying {repoData.items.length} of {repoData.total_count}{" "}
               matching repositories.
             </p>
           )}
-          {repoData?.items.length > 0 && (
+          {!pending && repoData?.items.length > 0 && (
             <Table variant="dark" size="sm" responsive="sm" className="mt-5">
               <thead>
                 <tr>
