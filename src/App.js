@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { HTTPError } from "./errors";
+import { fetchGitHubUser, searchForRepos } from "./github-api";
 
 // Bootstrap components
 import Navbar from "react-bootstrap/Navbar";
@@ -17,8 +18,6 @@ import Spinner from "react-bootstrap/Spinner";
 
 const STORAGE_KEY_LOGIN_STATE = "loginState";
 const STORAGE_KEY_ACCESS_TOKEN = "ghAccessToken";
-
-const GH_API_BASE_URL = "https://api.github.com";
 
 function App() {
   const [ghAccessToken, setGhAccessToken] = useState("");
@@ -71,23 +70,7 @@ function App() {
         }
 
         // Fetch the user data from GitHub if token exists
-        {
-          const response = await fetch(`${GH_API_BASE_URL}/user`, {
-            method: "GET",
-            headers: {
-              Accept: "application/vnd.github.v3+json",
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          const body = await response.json();
-          if (!response.ok) {
-            throw new HTTPError({
-              message: body.message,
-              status: response.status,
-            });
-          }
-          ghUserData = body;
-        }
+        ghUserData = await fetchGitHubUser(token);
 
         // Persist token and update App state
         sessionStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, token);
@@ -180,25 +163,11 @@ function RepositoriesView({ user, ghAccessToken }) {
     event.preventDefault();
     setPending(true);
     try {
-      let q = `user:${user.login}`;
-      if (search.trim()) {
-        q = `${search.trim()}+${q}`;
-      }
-      const url = `${GH_API_BASE_URL}/search/repositories?q=${q}&per_page=100`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Accept: "application/vnd.github.v3+json",
-          Authorization: `Bearer ${ghAccessToken}`,
-        },
+      const data = await searchForRepos(ghAccessToken, {
+        user: user.login,
+        search: search.trim(),
+        perPage: 100,
       });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new HTTPError({
-          message: data.message,
-          status: response.status,
-        });
-      }
       setRepoData(data);
     } catch (error) {
       alert("Uh oh. Something went wrong. Unable to fetch your repos.");
