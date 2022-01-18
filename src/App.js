@@ -174,9 +174,8 @@ function RepositoriesView({ user, ghAccessToken }) {
   const [pending, setPending] = useState(false);
   const [search, setSearch] = useState("");
   const [repoData, setRepoData] = useState(null);
-  useEffect(() => {
-    console.info("repoData:", repoData);
-  }, [repoData]);
+  const [selectedRepos, setSelectedRepos] = useState({});
+
   const handleSearchFormSubmit = async (event) => {
     event.preventDefault();
     setPending(true);
@@ -208,6 +207,18 @@ function RepositoriesView({ user, ghAccessToken }) {
       setPending(false);
     }
   };
+
+  const handleSelectChange = (event) => {
+    setSelectedRepos((prevState) => ({
+      ...prevState,
+      [event.target.value]: event.target.checked,
+    }));
+  };
+
+  const handleClearClick = () => {
+    setSelectedRepos({});
+  };
+
   return (
     <>
       <header>
@@ -236,7 +247,9 @@ function RepositoriesView({ user, ghAccessToken }) {
         <Col>
           <ButtonGroup aria-label="Basic example">
             <Button variant="danger">Delete</Button>
-            <Button variant="secondary">Clear</Button>
+            <Button variant="secondary" onClick={handleClearClick}>
+              Clear
+            </Button>
           </ButtonGroup>
         </Col>
       </Row>
@@ -253,7 +266,12 @@ function RepositoriesView({ user, ghAccessToken }) {
           {repoData?.total_count === 0 && (
             <p>There were no repos matching your search.</p>
           )}
-          {repoData?.items.length > 0 && <p>Displaying {repoData.items.length} of {repoData.total_count} matching repositories.</p>}
+          {repoData?.items.length > 0 && (
+            <p>
+              Displaying {repoData.items.length} of {repoData.total_count}{" "}
+              matching repositories.
+            </p>
+          )}
           {repoData?.items.length > 0 && (
             <Table variant="dark" size="sm" responsive="sm" className="mt-5">
               <thead>
@@ -275,12 +293,14 @@ function RepositoriesView({ user, ghAccessToken }) {
                     <tr key={repo.id}>
                       <td>
                         <div key="checkbox" className="mb-3">
-                          <Form.Check type="checkbox" id={`check-api-checkbox`}>
-                            <Form.Check.Input
-                              type="checkbox"
-                              aria-label="check to include the repo in the selection for editing"
-                            />
-                          </Form.Check>
+                          <Form.Check
+                            type="checkbox"
+                            onChange={handleSelectChange}
+                            checked={selectedRepos[repo.id]}
+                            value={repo.id}
+                            type="checkbox"
+                            aria-label="check to include the repo in the selection for editing"
+                          />
                         </div>
                       </td>
                       <td>
