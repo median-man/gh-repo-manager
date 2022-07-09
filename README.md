@@ -1,4 +1,10 @@
-# Getting Started with Create React App
+# GH Manager
+
+Web app for instructors who frequently need to delete repos and other tasks that aren't so easy with the GitHub UI.
+
+**USE WITH CAUTION.** This app allows you to search your repos and delete multiple repositories with a single click.
+
+![GH Manager screenshot](./screenshot.png)
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
@@ -6,13 +12,29 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 
 In the project directory, you can run:
 
+### `npm run auth`
+
+This will start the auth-server locally using the environmental variables in `.env`. Refer to `example.env` to see the required variables and their purpose. Requires GitHub OAuth keys. See the description for the `deploy` script below for more information.
+
+### `npm run deploy`
+
+Deploys the React client to GitHub Pages and deploys the auth server to Heroku.
+
+Deployment requirements:
+
+- Create a Heroku app for the auth server.
+- Add a remote for the Heroku app to git named `heroku` so that the auth-server subtree can be pushed to Heroku.
+- Create a GitHub OAuth app and add configuration for environmental variables. (See [example.env](./example.env))
+- Requires a Heroku app and a Git remote named `heroku` configured so that the auth-server subtree can be pushed to Heroku.
+
 ### `npm start`
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Runs the React client app in the development mode. Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 
 The page will reload when you make changes.\
 You may also see any lint errors in the console.
+
+This script does not start the auth-server. Use `npm run auth` to start running the auth-server locally. Provide env vars in a `.env` file to configure it for either a local auth-server or use a remote. Refer to `example.env`.
 
 ### `npm test`
 
